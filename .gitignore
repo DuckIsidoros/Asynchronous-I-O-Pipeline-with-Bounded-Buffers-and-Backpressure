@@ -1,0 +1,13 @@
+# Generated build artifacts
+/build/
+*.o
+*.d
+
+# Generated test data
+/data/
+/output/
+/logs/
+
+# Python cache
+__pycache__/
+*.pyc
