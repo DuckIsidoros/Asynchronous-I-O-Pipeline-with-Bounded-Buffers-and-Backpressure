@@ -4,7 +4,7 @@
 
 static inline void assert_inv1(const bounded_queue_t *q)
 {
-    asset(q->count <= q->capacity);
+    assert(q->count <= q->capacity);
 }
 
 int bounded_queue_init(bounded_queue_t *q, size_t capacity)
@@ -29,9 +29,9 @@ int bounded_queue_init(bounded_queue_t *q, size_t capacity)
     return 0;
 }
 
-bool bounded_queue_push(bounded_queue_t *q, pipeline_block_t *block_ref)
+bool bounded_queue_push(bounded_queue_t *q, pipeline_block_t **block_ref)
 {
-    if (!q || !block_ref)
+    if (!q || !block_ref || !*block_ref)
         return false;
 
     pthread_mutex_lock(&q->lock);
@@ -49,11 +49,11 @@ bool bounded_queue_push(bounded_queue_t *q, pipeline_block_t *block_ref)
 
     assert_inv1(q);
 
-    q->slots[q->tail] = block_ref;
+    q->slots[q->tail] = *block_ref;
     q->tail = (q->tail + 1) % q->capacity;
     q->count++;
 
-    block_ref = NULL;
+    *block_ref = NULL;
     assert_inv1(q);
 
     pthread_cond_signal(&q->not_empty);
@@ -96,6 +96,9 @@ bool bounded_queue_pop(bounded_queue_t *q, pipeline_block_t **out_block)
 
 void bounded_queue_shutdown(bounded_queue_t *q)
 {
+    if (!q)
+        return;
+
     pthread_mutex_lock(&q->lock);
     q->is_shutdown = true;
     pthread_cond_broadcast(&q->not_full);
@@ -105,6 +108,9 @@ void bounded_queue_shutdown(bounded_queue_t *q)
 
 void bounded_queue_destroy(bounded_queue_t *q)
 {
+    if (!q)
+        return;
+
     free(q->slots);
     pthread_mutex_destroy(&q->lock);
     pthread_cond_destroy(&q->not_full);
