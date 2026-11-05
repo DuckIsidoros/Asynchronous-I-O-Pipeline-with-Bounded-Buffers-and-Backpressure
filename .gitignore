@@ -1,3 +1,5 @@
 .agents/
 graphify-out/
 .gitignore
+*.o
+pipeline
