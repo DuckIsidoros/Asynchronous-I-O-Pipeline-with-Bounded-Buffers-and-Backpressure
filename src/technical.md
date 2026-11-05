@@ -147,3 +147,70 @@ typedef struct worker_ctx
 ### Invariants Preserved
 - `Inv4`: At all points, worker holds exclusive ownership of popped chunk until pushed to `out_queue` where `chunk == NULL`.
 - `FR-1, FR-5`: Sentinels demarcate EOF and propagate to downstream consumers.
+
+---
+
+## 5. Reader Stage (`reader.c`)
+
+Defined in `include/reader.h` and implemented in `src/reader.c`.
+
+### Data Structure
+
+```c
+typedef struct reader_ctx
+{
+    int fd_in;
+    size_t chunk_size;
+    bounded_queue_t *out_queue;
+    size_t num_workers;
+} reader_ctx_t;
+```
+
+### Module APIs
+
+- `void *reader_thread(void *arg);`
+  - Ingestion entry point reading raw streams from `fd_in` into fixed-capacity `chunk_t` blocks.
+  - Loops around `read(2)` until `chunk_size` is reached or EOF is encountered (FR-4).
+  - Handles `errno == EINTR` by retrying immediately without dropping bytes.
+  - On EOF, broadcasts exactly `num_workers` EOF sentinels (`chunk_create_sentinel`) to `out_queue` to ensure deterministic shutdown of all worker threads (FR-1, FR-5).
+  - Enforces Inv4 ownership transfer on `bounded_queue_push`.
+
+---
+
+## 6. Writer Stage (`writer.c`)
+
+Defined in `include/writer.h` and implemented in `src/writer.c`.
+
+### Data Structure
+
+```c
+typedef struct writer_ctx
+{
+    int fd_out;
+    bounded_queue_t *in_queue;
+    size_t num_workers;
+} writer_ctx_t;
+```
+
+### Module APIs
+
+- `void *writer_thread(void *arg);`
+  - Egress entry point consuming processed chunks from `in_queue` and committing to `fd_out`.
+  - Reorders chunks using a sorted pending list to guarantee strict in-order commits (`seq_id`).
+  - Loops around `write(2)` until all `chunk->size` bytes are flushed, retrying on `EINTR` (FR-4).
+  - Drains sentinels and terminates when `sentinels_received == num_workers` and pending buffer is empty (FR-1, FR-5).
+  - Invokes `chunk_destroy(&chunk)` immediately after write commit to satisfy Inv4 single ownership.
+
+---
+
+## 7. Pipeline Supervisor (`main.c`)
+
+Implemented in `src/main.c`.
+
+### Execution Flow
+
+1. Parses command line arguments (`-i`, `-o`, `-w`, `-q`, `-b`).
+2. Initializes bounded queues `q1` and `q2` with backpressure synchronization.
+3. Spawns 1 Reader thread, `W` Worker threads, and 1 Writer thread.
+4. Synchronizes shutdown via `pthread_join` (Reader $\to$ Worker Pool $\to$ Writer).
+5. Cleans up file descriptors and destroys bounded queues via `bounded_queue_destroy`.

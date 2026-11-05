@@ -1,17 +1,10 @@
 #include "common.h"
 #include "bounded_queue.h"
+#include "worker.h"
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <assert.h>
-
-// Define worker thread context structure.
-typedef struct worker_ctx
-{
-    bounded_queue_t *in_queue;
-    bounded_queue_t *out_queue;
-    void (*transform)(chunk_t *chunk);
-} worker_ctx_t;
 
 // Default transformation function that can be used if no custom callback is supplied.
 static void default_transform(chunk_t *chunk)
