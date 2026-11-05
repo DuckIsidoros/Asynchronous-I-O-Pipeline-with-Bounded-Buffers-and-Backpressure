@@ -45,3 +45,5 @@ Immediately after code changes are complete:
   - New module interfaces, schemas, or altered APIs.
   - Setup requirements or runtime configuration changes.
 - Verify that documentation stays aligned with the latest codebase state.
+
+Constrained: Just comment one line for a block of code.
