@@ -1,13 +1,5 @@
-# Generated build artifacts
-/build/
+.agents/
+graphify-out/
+.gitignore
 *.o
-*.d
-
-# Generated test data
-/data/
-/output/
-/logs/
-
-# Python cache
-__pycache__/
-*.pyc
+pipeline
