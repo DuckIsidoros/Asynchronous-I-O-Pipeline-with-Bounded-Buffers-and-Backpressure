@@ -1,21 +1,27 @@
-CC = gcc
-CFLAGS = -Wall -Wextra -Werror -pedantic -pthread -Iinclude -O2
-SRCS = src/common.c src/bounded_queue.c src/worker.c src/reader.c src/writer.c src/main.c
-OBJS = $(SRCS:.c=.o)
-TARGET = pipeline
+
+CC := gcc
+CFLAGS := -std=c11 -Wall -Wextra -Werror -pedantic -pthread -Iinclude
+LDFLAGS := -pthread
+
+SRC := $(wildcard src/*.c)
+OBJ := $(patsubst src/%.c,build/%.o,$(SRC))
+DEP := $(OBJ:.o=.d)
+TARGET := build/pipeline
+
+.PHONY: all objects clean
 
 all: $(TARGET)
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^
+objects: $(OBJ)
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+$(TARGET): $(OBJ)
+	$(CC) $(OBJ) -o $@ $(LDFLAGS)
 
-test: $(TARGET)
-	./run_tests.sh
+build/%.o: src/%.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -rf build
 
-.PHONY: all test clean
+-include $(DEP)
