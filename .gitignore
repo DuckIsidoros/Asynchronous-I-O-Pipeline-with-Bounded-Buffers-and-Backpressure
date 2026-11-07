@@ -1,5 +1,19 @@
+# Generated build artifacts
+/build/
+/build-cmake/
+pipeline
+*.o
+*.d
+
+# Generated test data & output
+/data/
+/output/
+/logs/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local tooling & indexing cache
 .agents/
 graphify-out/
-.gitignore
-*.o
-pipeline
