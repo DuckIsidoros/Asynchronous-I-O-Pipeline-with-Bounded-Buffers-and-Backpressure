@@ -111,7 +111,25 @@ void bounded_queue_destroy(bounded_queue_t *q)
     if (!q)
         return;
 
-    free(q->slots);
+    if (q->slots)
+    {
+        for (size_t i = 0; i < q->capacity; ++i)
+        {
+            if (q->slots[i])
+            {
+                if (q->slots[i]->data)
+                {
+                    free(q->slots[i]->data);
+                    q->slots[i]->data = NULL;
+                }
+                free(q->slots[i]);
+                q->slots[i] = NULL;
+            }
+        }
+        free(q->slots);
+        q->slots = NULL;
+    }
+
     pthread_mutex_destroy(&q->lock);
     pthread_cond_destroy(&q->not_full);
     pthread_cond_destroy(&q->not_empty);

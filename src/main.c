@@ -13,10 +13,8 @@
 #include <getopt.h>
 #include <assert.h>
 
-// Print application CLI usage parameters.
 static void print_usage(const char *prog_name)
 {
-    // Output formatted help instructions to stderr.
     fprintf(stderr, "Usage: %s [-i input_file] [-o output_file] [-w workers] [-q queue_cap] [-b chunk_size]\n", prog_name);
     fprintf(stderr, "  -i <path>   Input file path (defaults to stdin)\n");
     fprintf(stderr, "  -o <path>   Output file path (defaults to stdout)\n");
@@ -25,17 +23,28 @@ static void print_usage(const char *prog_name)
     fprintf(stderr, "  -b <size>   Chunk buffer size in bytes (default: 65536)\n");
 }
 
-// Pipeline supervisor entry point managing stage lifecycles and thread barriers.
+static void drain_and_destroy_queue(bounded_queue_t *q)
+{
+    chunk_t *chunk = NULL;
+    bounded_queue_shutdown(q);
+    while (bounded_queue_pop(q, (pipeline_block_t **)&chunk))
+    {
+        if (chunk)
+        {
+            chunk_destroy(&chunk);
+        }
+    }
+    bounded_queue_destroy(q);
+}
+
 int main(int argc, char *argv[])
 {
-    // Default pipeline configuration values.
     const char *input_path = NULL;
     const char *output_path = NULL;
     size_t num_workers = 4;
     size_t queue_cap = 16;
     size_t chunk_size = 65536;
 
-    // Parse command line configuration options.
     int opt;
     while ((opt = getopt(argc, argv, "i:o:w:q:b:h")) != -1)
     {
@@ -63,14 +72,12 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Validate configuration bounds.
     if (num_workers == 0 || queue_cap == 0 || chunk_size == 0)
     {
         fprintf(stderr, "Error: workers, queue_cap, and chunk_size must all be positive.\n");
         return 1;
     }
 
-    // Open input file descriptor or default to stdin.
     int fd_in = STDIN_FILENO;
     if (input_path != NULL && strcmp(input_path, "-") != 0)
     {
@@ -82,7 +89,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Open output file descriptor or default to stdout.
     int fd_out = STDOUT_FILENO;
     if (output_path != NULL && strcmp(output_path, "-") != 0)
     {
@@ -98,21 +104,26 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Initialize pipeline stage queues: q1 (Reader->Workers) and q2 (Workers->Writer).
     bounded_queue_t q1;
     bounded_queue_t q2;
     if (bounded_queue_init(&q1, queue_cap) != 0 || bounded_queue_init(&q2, queue_cap) != 0)
     {
         fprintf(stderr, "Failed to initialize bounded queues\n");
+        if (fd_in != STDIN_FILENO)
+        {
+            close(fd_in);
+        }
+        if (fd_out != STDOUT_FILENO)
+        {
+            close(fd_out);
+        }
         return 1;
     }
 
-    // Allocate thread tracking arrays for worker pool.
     pthread_t *worker_tids = (pthread_t *)malloc(sizeof(pthread_t) * num_workers);
     worker_ctx_t *worker_contexts = (worker_ctx_t *)malloc(sizeof(worker_ctx_t) * num_workers);
     assert(worker_tids != NULL && worker_contexts != NULL);
 
-    // Initialize reader context and spawn reader thread.
     reader_ctx_t r_ctx = {
         .fd_in = fd_in,
         .chunk_size = chunk_size,
@@ -122,7 +133,6 @@ int main(int argc, char *argv[])
     pthread_t reader_tid;
     pthread_create(&reader_tid, NULL, reader_thread, &r_ctx);
 
-    // Spawn multi-threaded worker pool.
     for (size_t i = 0; i < num_workers; ++i)
     {
         worker_contexts[i].in_queue = &q1;
@@ -131,7 +141,6 @@ int main(int argc, char *argv[])
         pthread_create(&worker_tids[i], NULL, worker_thread, &worker_contexts[i]);
     }
 
-    // Initialize writer context and spawn writer thread.
     writer_ctx_t w_ctx = {
         .fd_out = fd_out,
         .in_queue = &q2,
@@ -140,19 +149,15 @@ int main(int argc, char *argv[])
     pthread_t writer_tid;
     pthread_create(&writer_tid, NULL, writer_thread, &w_ctx);
 
-    // Join reader thread upon completion.
     pthread_join(reader_tid, NULL);
 
-    // Join all worker pool threads upon sentinel-driven exit.
     for (size_t i = 0; i < num_workers; ++i)
     {
         pthread_join(worker_tids[i], NULL);
     }
 
-    // Join writer thread upon completion of ordered egress flush.
     pthread_join(writer_tid, NULL);
 
-    // Close open file descriptors if opened from filesystem paths.
     if (fd_in != STDIN_FILENO)
     {
         close(fd_in);
@@ -162,14 +167,11 @@ int main(int argc, char *argv[])
         close(fd_out);
     }
 
-    // Destroy bounded synchronization queues.
-    bounded_queue_destroy(&q1);
-    bounded_queue_destroy(&q2);
+    drain_and_destroy_queue(&q1);
+    drain_and_destroy_queue(&q2);
 
-    // Release allocated worker metadata buffers.
     free(worker_tids);
     free(worker_contexts);
 
-    // Return success status code.
     return 0;
 }

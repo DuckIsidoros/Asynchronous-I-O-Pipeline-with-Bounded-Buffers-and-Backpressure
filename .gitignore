@@ -17,3 +17,5 @@ __pycache__/
 # Local tooling & indexing cache
 .agents/
 graphify-out/
+
+report_2.md
