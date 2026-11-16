@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BIN="./pipeline"
+BIN="./build/pipeline"
 TEST_DIR="/tmp/pipeline_tests_$$"
 mkdir -p "$TEST_DIR"
 

@@ -1,5 +1,6 @@
 #include "common.h"
 #include "bounded_queue.h"
+#include "telemetry.h"
 #include "worker.h"
 #include "reader.h"
 #include "writer.h"
@@ -12,6 +13,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <assert.h>
+#include <sys/resource.h>
 
 static void print_usage(const char *prog_name)
 {
@@ -41,12 +43,13 @@ int main(int argc, char *argv[])
 {
     const char *input_path = NULL;
     const char *output_path = NULL;
+    const char *csv_path = NULL;
     size_t num_workers = 4;
     size_t queue_cap = 16;
     size_t chunk_size = 65536;
 
     int opt;
-    while ((opt = getopt(argc, argv, "i:o:w:q:b:h")) != -1)
+    while ((opt = getopt(argc, argv, "i:o:w:q:b:m:h")) != -1)
     {
         switch (opt)
         {
@@ -64,6 +67,9 @@ int main(int argc, char *argv[])
             break;
         case 'b':
             chunk_size = (size_t)strtoul(optarg, NULL, 10);
+            break;
+        case 'm':
+            csv_path = optarg;
             break;
         case 'h':
         default:
@@ -157,6 +163,45 @@ int main(int argc, char *argv[])
     }
 
     pthread_join(writer_tid, NULL);
+    queue_telemetry_t q1_stats;
+    queue_telemetry_t q2_stats;
+    if(!bounded_queue_get_telemetry(&q1, &q1_stats) || !bounded_queue_get_telemetry(&q2, &q2_stats))
+    {
+        fprintf(stderr, "Failed to collect queue telemetry\n");
+        return 1;
+    }
+
+
+    process_telemetry_t process_stats;
+
+    if (telemetry_collect_process(&process_stats) != 0)
+    {
+        fprintf(stderr, "Failed to collect process telemetry\n");
+    }
+    else
+    {
+        fprintf(stderr, "Peak RSS: %ld KiB\n",
+            process_stats.max_rss_kb);
+
+        fprintf(stderr, "Read characters: %llu bytes\n",
+            (unsigned long long)process_stats.rchar);
+
+        fprintf(stderr, "Write characters: %llu bytes\n",
+            (unsigned long long)process_stats.wchar);
+
+        fprintf(stderr, "Storage read: %llu bytes\n",
+            (unsigned long long)process_stats.read_bytes);
+
+        fprintf(stderr, "Storage write: %llu bytes\n",
+            (unsigned long long)process_stats.write_bytes);
+        if(csv_path != NULL)
+        {
+            if(telemetry_export_csv(csv_path, num_workers, chunk_size, &q1_stats, &q2_stats, &process_stats) != 0)
+            {
+                fprintf(stderr, "Failed to export telemetry CSV\n");
+            }
+        }
+    }
 
     if (fd_in != STDIN_FILENO)
     {

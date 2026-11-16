@@ -19,17 +19,28 @@ typedef struct
     size_t capacity;
     size_t head;
     size_t tail;
+    size_t max_occupancy;
+    uint64_t producer_stall_ns;
+    uint64_t consumer_stall_ns;
     size_t count;
     bool is_shutdown;
     pthread_mutex_t lock;
     pthread_cond_t not_full;
     pthread_cond_t not_empty;
 } bounded_queue_t;
+typedef struct
+{
+    size_t current_occupancy;
+    size_t max_occupancy;
+    size_t capacity;
+    uint64_t producer_stall_ns;
+    uint64_t consumer_stall_ns;
+} queue_telemetry_t;
 
 int bounded_queue_init(bounded_queue_t *q, size_t capacity);
 void bounded_queue_destroy(bounded_queue_t *q);
 bool bounded_queue_push(bounded_queue_t *q, pipeline_block_t **block_ref);
 bool bounded_queue_pop(bounded_queue_t *q, pipeline_block_t **out_block);
 void bounded_queue_shutdown(bounded_queue_t *q);
-
+bool bounded_queue_get_telemetry(bounded_queue_t *q, queue_telemetry_t *snapshot);
 #endif
